@@ -6,15 +6,10 @@ output: github_document
 
 ```{r setup, include=FALSE}
 library(tidyverse)
+library(ggridges)
 library(patchwork)
 
 Sys.setlocale("LC_TIME", "English")
-
-knitr::opts_chunk$set(
-  fig.width = 6,
-  fig.asp = .6,
-  out.width = "90%"
-)
 
 theme_set(theme_minimal() + theme(legend.position = "bottom"))
 
@@ -172,90 +167,117 @@ The most commonly observed values for snowfall is 0 mm (using R inline code to c
 
 ### (2)
 
+I use `group_by` based on `id`, `year` and `month` to calculate the average max temperature in January and July in each station respectively, and make a two-panel scatter plot to show the average `tmax` across years.
+
 ```{r}
 ny_noaa_tidy %>% 
   mutate(month = month.abb[month]) %>% 
   filter(month %in% c("Jan","Jul")) %>% 
   group_by(id,year,month) %>% 
-  summarise(avg_tmax = mean(tmax, na.rm = TRUE)) %>% 
-  ggplot(aes(x = year, y = avg_tmax))+
-  geom_violin(alpha = .5) %>% 
+  mutate(avg_tmax = mean(tmax, na.rm = TRUE)) %>% 
+  filter(!(is.na(avg_tmax))) %>% 
   
+  ggplot(aes(x = year, y = avg_tmax, color = id))+
+  geom_point(alpha = .1) +
+  facet_grid(month ~., scales = "free_y") +
+  labs(
+    title = "Average maximum temperature in Jan and Jul in each station",
+    x = "year",
+    y = "Average maximum daily temperature (C)",
+    caption = "Data from NOAA")+
+  theme(legend.position = "none")
+```  
 
-jan_plot =  jan_data %>% 
-  ggplot(aes(x = id, y = avg_tmax))+
-  geom_point()
-
-jul_data = 
-  ny_noaa_tidy %>% 
-  mutate(month = month.abb[month]) %>% 
-  filter(month == "Jul") %>% 
-  group_by(id,year) %>% 
-  summarise(avg_tmax = mean(tmax, na.rm = TRUE))
-
-jul_plot = jul_data %>% 
-  drop_na(avg_tmax) %>% 
-  ggplot(aes(x = id, y = avg_tmax))+
-  geom_point()
-
-jan_plot / jul_plot
-```
-
-The data points for both Jan and Jul seem to follow normal distribution.  
+From the plot, it seems that both the distributions are normal. The average max temperature in January centers around -0.2C while that in July centers around 27C. The max temperature of January varies more than that of July.
 
 I use boxplot to identify outliers.
 
 ```{r}
-jan_data %>% 
-  ggplot(aes(x = avg_tmax))+geom_boxplot()+
-  labs(
-    title = "Average max temperature in Jan",
-    x = "Station id",
-    y = "Average max temperature"
-  )
-```
-
-```{r}
-jul_data %>% 
-  ggplot(aes(x = avg_tmax))+geom_boxplot()+
-  labs(
-    title = "Average max temperature in Jul",
-    x = "Station id",
-    y = "Average max temperature"
-  )
+ny_noaa_tidy %>% 
+  mutate(month = month.abb[month]) %>% 
+  filter(month %in% c("Jan","Jul")) %>% 
+  group_by(id,month) %>% 
+  mutate(avg_tmax = mean(tmax, na.rm = TRUE)) %>% 
+  filter(!(is.na(avg_tmax))) %>% 
+  ggplot(aes(x = month, y = avg_tmax))+
+  geom_boxplot()+
+  labs(y = "Average maximum daily temperature (C)",
+    x = "Month",
+    caption = "Data from NOAA")
 ```
 
 Therefore, I can find the outliers for average max temperature in January and July respectively using the following code.
+
 ```{r}
-rbind(jan_data %>% filter(min_rank(avg_tmax)<4),
-      jan_data %>% filter(min_rank(desc(avg_tmax))<2))
+rbind(
+  ny_noaa_tidy %>% 
+  mutate(month = month.abb[month]) %>% 
+  filter(month == "Jan") %>% 
+  group_by(id) %>% 
+  summarise(avg_tmax = mean(tmax, na.rm = TRUE)) %>% 
+  filter(min_rank(avg_tmax)<4),
+  ny_noaa_tidy %>% 
+  mutate(month = month.abb[month]) %>% 
+  filter(month == "Jan") %>% 
+  group_by(id) %>% 
+  summarise(avg_tmax = mean(tmax, na.rm = TRUE)) %>%
+  filter(min_rank(desc(avg_tmax))<3))
 ```
 
 ```{r}
-rbind(jul_data %>% filter(min_rank(avg_tmax)<6),
-      jul_data %>% filter(min_rank(desc(avg_tmax))<2))
+rbind(
+  ny_noaa_tidy %>% 
+  mutate(month = month.abb[month]) %>% 
+  filter(month == "Jul") %>% 
+  group_by(id) %>% 
+  summarise(avg_tmax = mean(tmax, na.rm = TRUE)) %>% 
+  filter(min_rank(avg_tmax)<3),
+  ny_noaa_tidy %>% 
+  mutate(month = month.abb[month]) %>% 
+  filter(month == "Jul") %>% 
+  group_by(id) %>% 
+  summarise(avg_tmax = mean(tmax, na.rm = TRUE)) %>%
+  filter(min_rank(desc(avg_tmax))<3))
 ```
 
 ### (3)
 
-```{r}
+To better reduce overlapping, I use hexagonal heatmap instead of traditional scatterplot to plot `tmax` vs `tmin`. I use ridgeline visualization to show the distribution of snowfall values greater than 0 and less than 100 separately by year.
+
+```{r warning=FALSE}
 tmax_tmin = 
   ny_noaa_tidy %>% 
-  pivot_longer(
-    tmax:tmin,
-    names_to = "observation",
-    values_to = "temp"
-  ) %>% 
-ggplot(aes(x = temp, fill = observation))+
-geom_density(alpha = .7)
+  ggplot(aes(x = tmin, y = tmax))+
+  geom_hex()+
+    labs(
+    title = "Maximum temperature vs minimum temperature",
+    x = "Minimum temperature (C)",
+    y = "Maximum temperature (C)"
+  ) +
+  theme(legend.position = "right",
+        plot.title = element_text(size = 13))
 
 snowfall = 
-  ny_noaa_tidy %>% 
-  group_by(year) %>% 
-  filter(snow>0) %>% 
-  ggplot(aes())
+  ny_noaa_tidy %>%
+  filter(snow>0,snow<100) %>%
+  mutate(year = as.character(year)) %>% 
+  ggplot(aes(x = snow, y = year)) + 
+  geom_density_ridges(scale = 0.85)+
+  labs(
+    title = "The distribution of snowfall in each year",
+    y = "Year",
+    x = "Snow fall (mm)",
+    caption = "Data from NOAA"
+  ) +
+  scale_y_discrete(breaks = c("1981", "1986", "1991", "1996", "2001", "2006", "2010"))+
+  theme(plot.title = element_text(size = 13))
+
+tmax_tmin / snowfall + plot_layout(ncol = 1, heights = c(1.5,2))
 ```
 
+From the plot `tmax_tmin`, we can see that there are some outliers, where extreme temperatures are reached. This may be because of wrong records based on common sense. The maximum temperature centers around 14C while the minimum temperature centers around 3C.
+
+The distributions of snowfall for all years are right-skewed, centering around 20-30mm. The maximum snowfall can reach over 80, which indicates either a horrible disaster or wrong recording. 
 
 
 

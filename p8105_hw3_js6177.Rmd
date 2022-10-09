@@ -1,0 +1,262 @@
+---
+title: "p8105_hw3_js6177"
+author: "Jiayi Shi"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(patchwork)
+
+Sys.setlocale("LC_TIME", "English")
+
+knitr::opts_chunk$set(
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+## Problem 1
+
+```{r}
+library(p8105.datasets)
+data("instacart")
+```
+
+## Problem 2
+
+### tidy data
+
+The code below reads the data, cleans the variables' names, create a variable `day_type` that specifies weekday or weekend of the associated day, convert `day` into a factor variable and arrange the columns to produce the final dataset.
+
+```{r}
+accel = read_csv("data/accel_data.csv") %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    day_type = ifelse(day %in% c("Sunday","Saturday"),"weekend","weekday"),
+    day = as.factor(day)
+  ) %>% 
+  select(week,day_id,day,day_type,everything())
+```
+
+The resulting dataset has `r nrow(accel)` observations and `r ncol(accel)` variables, including `week` (week number), `day_id` (day identifier), a factor variable `day` (Mon-Sun), a character variable `day_type` (weekday vs weekend) and `activity_*` (activity counts for each minute of a 24-hour day). 
+
+### total activity
+
+The code belows create a variable `total_activity` by summing up the activity counts for each minute of the associated day.
+
+```{r}
+accel %>% 
+  mutate(
+    total_activity = select(.,starts_with("activity_")) %>% rowSums(na.rm = T)
+         ) %>% 
+  select(day_id,total_activity) %>% 
+  knitr::kable(col.names = c("Day id","Total activity counts"))
+```
+
+From the table, I cannot see any apparent trend. 
+
+### Plot
+
+The codes below convert the original dataset from wide to long, and create a variable `hr_activity` which is the summation of the activity counts for each minute within that hour. I then group dataset by `day` and `activity_hr` and make a plot of 24-hour activity time courses of each day of the week.
+
+```{r}
+accel %>%  
+  pivot_longer(
+    activity_1:activity_1440,
+    names_to = "activity_min",
+    names_prefix = "activity_",
+    values_to = "min_count"
+  ) %>%  
+  mutate(
+    activity_min = as.integer(activity_min),
+    activity_hr = activity_min %/% 60
+  ) %>% 
+  group_by(day,activity_hr) %>% 
+  mutate(hr_count = sum(min_count)) %>% 
+  
+  ggplot(aes(x = activity_hr, y = hr_count, color = day)) +
+  geom_point()+
+  geom_line()+
+  labs(
+    title = "Plot of 24-hour activity time courses",
+    x = "Activity time (hour)",
+    y = "Activity counts"
+  )+
+  scale_color_discrete(name = "Day of the week")
+```
+
+Most activity happened between 6:00-22:00. On Monday and Friday night (20:00-21:00) as well as Saturday morning (9:00-11:00) we see spikes in activity counts. Activity is very low on Sunday. I then group dataset by `day_type` and the graph below clearly shows that the mean activity count of weekend is lower than that of weekday.  
+
+```{r}
+accel %>%  
+  pivot_longer(
+    activity_1:activity_1440,
+    names_to = "activity_min",
+    names_prefix = "activity_",
+    values_to = "min_count"
+  ) %>%  
+  mutate(
+    activity_min = as.integer(activity_min),
+    activity_hr = activity_min %/% 60
+  ) %>% 
+  group_by(day_type,activity_hr) %>% 
+  mutate(hr_count = sum(min_count),
+         mean_hr_count = mean(hr_count)
+         ) %>% 
+  
+  ggplot(aes(x = activity_hr, y = mean_hr_count, color = day_type)) +
+  geom_point()+
+  geom_line()+
+  labs(
+    title = "Plot of 24-hour activity time courses",
+    x = "Activity time (hour)",
+    y = "Mean activity counts"
+  )
+```
+
+
+
+## Problem 3
+
+### Description
+
+```{r}
+library(p8105.datasets)
+data("ny_noaa")
+```
+
+The size of the dataset is `r dim(ny_noaa)[1]` x `r dim(ny_noaa)[2]`, with`r nrow(ny_noaa)` observations and `r ncol(ny_noaa)` variables, including `id` (Weather station ID), `date` (Date of observation), `prcp` (Precipitation (tenths of mm)), `snow` (Snowfall (mm)), `snwd` (Snow depth (mm)), `tmax` (Maximum temperature (tenths of degrees C)) and `tmin` (Minimum temperature (tenths of degrees C)). 
+
+The codes below shows the structure of the dataset.
+
+```{r}
+str(ny_noaa)
+```
+
+`id`, `tmax`, `tmin` are character variables, `date` is date variable, and `prcp`, `snow`, `snwd` are integer variables.
+
+The proportion of missing values `r round(sum(is.na(ny_noaa$prcp))/nrow(ny_noaa),2)` for `prcp`, `r round(sum(is.na(ny_noaa$snow))/nrow(ny_noaa),2)` for `snow`, `r round(sum(is.na(ny_noaa$snwd))/nrow(ny_noaa),2)` for `snwd`, `r round(sum(is.na(ny_noaa$tmax))/nrow(ny_noaa),2)` for `tmax`, `r round(sum(is.na(ny_noaa$tmin))/nrow(ny_noaa),2)` for `tmin`. Since most of them is larger than 10%, I think the missing value will influence the exploratory numeric analysis to some extent.
+
+### (1)
+
+The code belows do the data cleaning: separate `date` variable into `year`, `month`, and `day`, convert`tmin` and `tmax` from character to numeric variables, and ensure observations for temperature, precipitation, and snowfall are given in reasonable units.
+
+```{r}
+ny_noaa_tidy = 
+  mutate(ny_noaa,
+    year = as.integer(lubridate::year(date)), 
+    month = as.integer(lubridate::month(date)), 
+    day = as.integer(lubridate::day(date)),
+    prcp = prcp/10,
+    tmin = as.numeric(tmin)/10,
+    tmax = as.numeric(tmax)/10
+    ) %>% 
+  select(id,date,year,month,day,prcp:tmin) 
+  
+ny_noaa_tidy %>% summarise(median_snow = median(snow, na.rm = T))
+```
+
+The most commonly observed values for snowfall is 0 mm (using R inline code to calculate median). 
+
+### (2)
+
+```{r}
+ny_noaa_tidy %>% 
+  mutate(month = month.abb[month]) %>% 
+  filter(month %in% c("Jan","Jul")) %>% 
+  group_by(id,year,month) %>% 
+  summarise(avg_tmax = mean(tmax, na.rm = TRUE)) %>% 
+  ggplot(aes(x = year, y = avg_tmax))+
+  geom_violin(alpha = .5) %>% 
+  
+
+jan_plot =  jan_data %>% 
+  ggplot(aes(x = id, y = avg_tmax))+
+  geom_point()
+
+jul_data = 
+  ny_noaa_tidy %>% 
+  mutate(month = month.abb[month]) %>% 
+  filter(month == "Jul") %>% 
+  group_by(id,year) %>% 
+  summarise(avg_tmax = mean(tmax, na.rm = TRUE))
+
+jul_plot = jul_data %>% 
+  drop_na(avg_tmax) %>% 
+  ggplot(aes(x = id, y = avg_tmax))+
+  geom_point()
+
+jan_plot / jul_plot
+```
+
+The data points for both Jan and Jul seem to follow normal distribution.  
+
+I use boxplot to identify outliers.
+
+```{r}
+jan_data %>% 
+  ggplot(aes(x = avg_tmax))+geom_boxplot()+
+  labs(
+    title = "Average max temperature in Jan",
+    x = "Station id",
+    y = "Average max temperature"
+  )
+```
+
+```{r}
+jul_data %>% 
+  ggplot(aes(x = avg_tmax))+geom_boxplot()+
+  labs(
+    title = "Average max temperature in Jul",
+    x = "Station id",
+    y = "Average max temperature"
+  )
+```
+
+Therefore, I can find the outliers for average max temperature in January and July respectively using the following code.
+```{r}
+rbind(jan_data %>% filter(min_rank(avg_tmax)<4),
+      jan_data %>% filter(min_rank(desc(avg_tmax))<2))
+```
+
+```{r}
+rbind(jul_data %>% filter(min_rank(avg_tmax)<6),
+      jul_data %>% filter(min_rank(desc(avg_tmax))<2))
+```
+
+### (3)
+
+```{r}
+tmax_tmin = 
+  ny_noaa_tidy %>% 
+  pivot_longer(
+    tmax:tmin,
+    names_to = "observation",
+    values_to = "temp"
+  ) %>% 
+ggplot(aes(x = temp, fill = observation))+
+geom_density(alpha = .7)
+
+snowfall = 
+  ny_noaa_tidy %>% 
+  group_by(year) %>% 
+  filter(snow>0) %>% 
+  ggplot(aes())
+```
+
+
+
+
+

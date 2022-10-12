@@ -118,7 +118,10 @@ accel %>%
     title = "Plot of 24-hour activity time courses",
     x = "Activity time (hour)",
     y = "Mean activity counts"
-  )
+  )+
+  viridis::scale_color_viridis(
+    name = "Day type",
+    discrete = TRUE) 
 ```
 
 
@@ -185,6 +188,8 @@ ny_noaa_tidy %>%
     x = "year",
     y = "Average maximum daily temperature (C)",
     caption = "Data from NOAA")+
+  scale_x_continuous(breaks = seq(1981,2010,1))+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
   theme(legend.position = "none")
 ```  
 
@@ -242,7 +247,7 @@ rbind(
 
 ### (3)
 
-To better reduce overlapping, I use hexagonal heatmap instead of traditional scatterplot to plot `tmax` vs `tmin`. I use ridgeline visualization to show the distribution of snowfall values greater than 0 and less than 100 separately by year.
+To better reduce overlapping, I use hexagonal heatmap instead of traditional scatterplot to plot `tmax` vs `tmin`. I use boxplot to show the distribution of snowfall values greater than 0 and less than 100 separately by year.
 
 ```{r warning=FALSE}
 tmax_tmin = 
@@ -281,7 +286,7 @@ tmax_tmin + snowfall
 
 From the plot `tmax_tmin`, we can see that there are some outliers, where extreme temperatures are reached. This may be because of wrong records based on common sense. The maximum temperature centers around 14C while the minimum temperature centers around 3C.
 
-The distributions of snowfall for all years are right-skewed, centering around 20-30mm. The maximum snowfall can reach over 80, which indicates either a horrible disaster or wrong recording. 
+The distributions of snowfall for all years are right-skewed, centering around 20-30mm and median remains around 25mm.
 
 
 

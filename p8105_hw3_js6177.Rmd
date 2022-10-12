@@ -250,29 +250,33 @@ tmax_tmin =
   ggplot(aes(x = tmin, y = tmax))+
   geom_hex()+
     labs(
-    title = "Maximum temperature vs minimum temperature",
+    title = "Max temperature vs min temperature",
     x = "Minimum temperature (C)",
     y = "Maximum temperature (C)"
   ) +
-  theme(legend.position = "right",
-        plot.title = element_text(size = 13))
+  theme(plot.title = element_text(size = 11),
+        plot.title.position = "plot",
+        legend.key.width = unit(1,"cm"))
 
 snowfall = 
   ny_noaa_tidy %>%
   filter(snow>0,snow<100) %>%
   mutate(year = as.character(year)) %>% 
   ggplot(aes(x = snow, y = year)) + 
-  geom_density_ridges(scale = 0.85)+
+  geom_boxplot()+
   labs(
-    title = "The distribution of snowfall in each year",
+    title = "Distribution of snowfall in each year",
     y = "Year",
     x = "Snow fall (mm)",
     caption = "Data from NOAA"
   ) +
-  scale_y_discrete(breaks = c("1981", "1986", "1991", "1996", "2001", "2006", "2010"))+
-  theme(plot.title = element_text(size = 13))
+  #scale_y_discrete(breaks = c("1981", "1986", "1991", "1996", "2001", "2006", "2010"))+
+  theme(plot.title = element_text(size = 11),
+        plot.title.position = "plot",
+        plot.caption.position = "panel")
 
-tmax_tmin / snowfall + plot_layout(ncol = 1, heights = c(1.5,2))
+#tmax_tmin / snowfall + plot_layout(ncol = 1, heights = c(1.5,2))
+tmax_tmin + snowfall
 ```
 
 From the plot `tmax_tmin`, we can see that there are some outliers, where extreme temperatures are reached. This may be because of wrong records based on common sense. The maximum temperature centers around 14C while the minimum temperature centers around 3C.

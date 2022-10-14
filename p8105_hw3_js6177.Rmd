@@ -88,19 +88,26 @@ instacart %>%
 
 ### tidy data
 
-The code below reads the data, cleans the variables' names, create a variable `day_type` that specifies weekday or weekend of the associated day, convert `day` into a factor variable and arrange the columns to produce the final dataset.
+The code below reads the data, cleans the variables' names, create a variable `day_type` that specifies weekday or weekend of the associated day, convert `day_type` and `day` into factor variables. I then pivot the dataset form wide to long, transforming all of those 1,440 columns into just two columns: `activity_num` and `activity_count`. I then arrange the columns to produce the final dataset.
 
 ```{r}
 accel = read_csv("data/accel_data.csv") %>% 
   janitor::clean_names() %>% 
   mutate(
     day_type = ifelse(day %in% c("Sunday","Saturday"),"weekend","weekday"),
+    day_type = as.factor(day_type),
     day = as.factor(day)
+  ) %>% 
+  pivot_longer(
+    activity_1:activity_1440,
+    names_to = "activity_num",
+    names_prefix = "activity_",
+    values_to = "activity_count"
   ) %>% 
   select(week,day_id,day,day_type,everything())
 ```
 
-The resulting dataset has `r nrow(accel)` observations and `r ncol(accel)` variables, including `week` (week number), `day_id` (day identifier), a factor variable `day` (Mon-Sun), a character variable `day_type` (weekday vs weekend) and `activity_*` (activity counts for each minute of a 24-hour day). 
+The resulting dataset has `r nrow(accel)` observations and `r ncol(accel)` variables. Each row shows activity counts for each minute of a specific day. Variables including `week` (week number), `day_id` (day identifier), a factor variable `day` (Mon-Sun), a factor variable `day_type` (weekday vs weekend), `activity_num` which is the minute of the day ranging from 1 to 1440, `activity_count` the activity count of that minute on the associated day.
 
 ### total activity
 
@@ -108,14 +115,23 @@ The code belows create a variable `total_activity` by summing up the activity co
 
 ```{r}
 accel %>% 
-  mutate(
-    total_activity = select(.,starts_with("activity_")) %>% rowSums(na.rm = T)
-         ) %>% 
-  select(day_id,total_activity) %>% 
-  knitr::kable(col.names = c("Day id","Total activity counts"))
+  group_by(day_id) %>% 
+  summarise(total_activity = sum(activity_count)) %>%
+  knitr::kable(col.names = c("Day id","Total activity counts"),digit = 1)
 ```
 
 From the table, I cannot see any apparent trend. 
+
+The table below shows the number of day and the total activity counts for the associated day, which is orded by the total activity counts.
+```{r}
+accel %>% 
+  group_by(day) %>% 
+  summarise(day_count = n()/1440,
+            total_activity = sum(activity_count)) %>% 
+  arrange(desc(total_activity)) %>% 
+  knitr::kable()
+```
+From this table, I can see that the activity counts fluctuate throughout the week.
 
 ### Plot
 
@@ -123,46 +139,49 @@ The codes below convert the original dataset from wide to long, and create a var
 
 ```{r}
 accel %>%  
-  pivot_longer(
-    activity_1:activity_1440,
-    names_to = "activity_min",
-    names_prefix = "activity_",
-    values_to = "min_count"
-  ) %>%  
+  ggplot(aes(x = activity_num, y = activity_count, color = day)) +
+  geom_point()+
+  geom_line()+
+  labs(
+    title = "Plot of 24-hour activity time courses",
+    x = "Time (minute)",
+    y = "Activity counts"
+  )+
+  scale_color_discrete(name = "Day of the week")
+```
+
+Since the plot is too messy, I convert the unit of x-axis from minute to hour.
+
+```{r}
+accel %>%  
   mutate(
-    activity_min = as.integer(activity_min),
-    activity_hr = activity_min %/% 60
+    activity_num = as.integer(activity_num),
+    activity_hr = activity_num %/% 60
   ) %>% 
   group_by(day,activity_hr) %>% 
-  mutate(hr_count = sum(min_count)) %>% 
+  mutate(hr_count = sum(activity_count)) %>% 
   
   ggplot(aes(x = activity_hr, y = hr_count, color = day)) +
   geom_point()+
   geom_line()+
   labs(
     title = "Plot of 24-hour activity time courses",
-    x = "Activity time (hour)",
+    x = "Time (hour)",
     y = "Activity counts"
   )+
   scale_color_discrete(name = "Day of the week")
 ```
 
-Most activity happened between 6:00-22:00. On Monday and Friday night (20:00-21:00) as well as Saturday morning (9:00-11:00) we see spikes in activity counts. Activity is very low on Sunday. I then group dataset by `day_type` and the graph below clearly shows that the mean activity count of weekend is lower than that of weekday.  
+From the plot, we can see that most activity happened between 6:00-22:00. On Monday and Friday night (20:00-21:00) as well as Saturday morning (9:00-11:00) we see spikes in activity counts. Activity is very low on Sunday. I then group dataset by `day_type` and the graph below clearly shows that the mean activity count of weekend is lower than that of weekday.  
 
 ```{r}
 accel %>%  
-  pivot_longer(
-    activity_1:activity_1440,
-    names_to = "activity_min",
-    names_prefix = "activity_",
-    values_to = "min_count"
-  ) %>%  
   mutate(
-    activity_min = as.integer(activity_min),
-    activity_hr = activity_min %/% 60
+    activity_num = as.integer(activity_num),
+    activity_hr = activity_num %/% 60
   ) %>% 
   group_by(day_type,activity_hr) %>% 
-  mutate(hr_count = sum(min_count),
+  mutate(hr_count = sum(activity_count),
          mean_hr_count = mean(hr_count)
          ) %>% 
   
@@ -171,14 +190,13 @@ accel %>%
   geom_line()+
   labs(
     title = "Plot of 24-hour activity time courses",
-    x = "Activity time (hour)",
+    x = "Time (hour)",
     y = "Mean activity counts"
   )+
   viridis::scale_color_viridis(
     name = "Day type",
     discrete = TRUE) 
 ```
-
 
 
 ## Problem 3
@@ -225,7 +243,7 @@ The most commonly observed values for snowfall is 0 mm (using R inline code to c
 
 ### (2)
 
-I use `group_by` based on `id`, `year` and `month` to calculate the average max temperature in January and July in each station respectively, and make a two-panel scatter plot to show the average `tmax` across years.
+I use `group_by` based on `id`, `year` and `month` to calculate the average max temperature in January and July in each station respectively, and make a two-panel Spaghetti plot to show the average `tmax` across years.
 
 ```{r}
 ny_noaa_tidy %>% 
@@ -236,7 +254,7 @@ ny_noaa_tidy %>%
   filter(!(is.na(avg_tmax))) %>% 
   
   ggplot(aes(x = year, y = avg_tmax, color = id))+
-  geom_point(alpha = .1) +
+  geom_line() +
   facet_grid(month ~., scales = "free_y") +
   labs(
     title = "Average maximum temperature in Jan and Jul in each station",
